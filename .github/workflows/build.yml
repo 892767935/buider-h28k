@@ -45,17 +45,18 @@ jobs:
           mkdir -p packages
           cp -r $GITHUB_WORKSPACE/custom-packages/* packages/ || true
 
-      # IB内置opkg环境刷新索引，验证OC/Lucky存在
+      # 【修复】使用IB标准make opkg调用，不再直接调用./bin/opkg
       - name: 刷新软件源索引并检索插件
         run: |
           cd ib-root
-            # 更新软件源索引
-          ./bin/opkg update
+          ls -la
+          # 更新软件源索引
+          make OPKG_ARGS="update" opkg
           # 检索插件是否存在
           echo "=== 查找luci-app-openclash ==="
-          ./bin/opkg find luci-app-openclash
+          make OPKG_ARGS="find luci-app-openclash" opkg
           echo "=== 查找luci-app-lucky ==="
-          ./bin/opkg find luci-app-lucky
+          make OPKG_ARGS="find luci-app-lucky" opkg
 
       - name: 编译固件（内置OpenClash+Lucky）
         run: |
