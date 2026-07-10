@@ -1,4 +1,4 @@
-name: Build OpenWrt HINLINK_H28K 25.12.4 Official IB With OpenClash&Lucky
+name: Build OpenWrt HINLINK_H28K 25.12.1 dllkids源
 on:
   workflow_dispatch:
   push:
@@ -6,47 +6,38 @@ on:
       - main
 
 env:
-  RELEASE_VER: 25.12.4
+  RELEASE_VER: 25.12.1
   TARGET: rockchip
   SUBTARGET: armv8
   PROFILE: hinlink_h28k
   ROOTFS_SIZE: 800
-  EXTRA_IMG_NAME: H28K-25.12.4-Official-OpenClash-Lucky
+  EXTRA_IMG_NAME: H28K-25.12.1-dllkids-OC-Lucky
   IB_URL: https://archive.openwrt.org/releases/25.12.1/targets/rockchip/armv8/openwrt-imagebuilder-25.12.1-rockchip-armv8.Linux-x86_64.tar.zst
 
 jobs:
   build-firmware:
     runs-on: ubuntu-22.04
     steps:
-      - name: 拉取仓库自定义配置文件
+      - name: 拉取仓库自定义文件
         uses: actions/checkout@v4
 
-      - name: 安装 ImageBuilder 全套依赖（含zstd解压工具）
+      - name: 安装全套编译依赖（含zstd）
         run: |
           sudo apt update
           sudo apt install -y build-essential libncurses-dev zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python3 python3-distutils zstd
 
-      - name: 下载官方 ImageBuilder 压缩包（兼容低版本wget -L跟随重定向）
+      - name: 下载25.12.1 IB压缩包
         run: |
           wget --tries=5 --timeout=60 -L ${{ env.IB_URL }} -O ib.tar.zst
-          echo "=== 校验下载文件格式 ==="
-          if ! file ib.tar.zst | grep -q "Zstandard compressed data"; then
-            echo "❌ 下载内容不是zstd压缩包，打印文件内容排查："
-            cat ib.tar.zst
-            exit 1
-          fi
-          echo "✅ 文件校验通过，开始解压"
+          file ib.tar.zst | grep -q "Zstandard compressed data" || (echo 压缩包损坏 && exit 1)
           mkdir ib-root
           tar -I zstd -xf ib.tar.zst -C ib-root --strip-components=1
-          cd ib-root
-          ls -la
+          cd ib-root && ls -la
 
-      - name: 查看IB支持的全部设备Profile（校验hinlink_h28k存在）
-        run: |
-          cd ib-root
-          make info
+      - name: 查看支持设备列表
+        run: cd ib-root && make info
 
-      - name: 导入自定义配置 & 替换软件源（已移除所有opkg命令）
+      - name: 导入配置+替换dllkids软件源
         run: |
           cd ib-root
           cp $GITHUB_WORKSPACE/repositories.conf ./repositories.conf
@@ -54,7 +45,17 @@ jobs:
           mkdir -p packages
           cp -r $GITHUB_WORKSPACE/custom-packages/* packages/ || true
 
-      - name: ImageBuilder 编译 hinlink_h28k 固件（官方+OpenClash+Lucky）
+      # IB内置opkg环境刷新索引，验证OC/Lucky存在
+      - name: 刷新软件源索引并检索插件
+        run: |
+          cd ib-root
+          make opkg-update
+          echo "=== 查找luci-app-openclash ==="
+          make OPKG_ARGS="find luci-app-openclash" opkg
+          echo "=== 查找luci-app-lucky ==="
+          make OPKG_ARGS="find luci-app-lucky" opkg
+
+      - name: 编译固件（内置OpenClash+Lucky）
         run: |
           cd ib-root
           make image \
@@ -70,17 +71,16 @@ jobs:
             ROOTFS_SIZE=${{ env.ROOTFS_SIZE }} \
             EXTRA_IMAGE_NAME=${{ env.EXTRA_IMG_NAME }}
 
-      - name: 整理固件产物（适配rockchip img.gz格式，不存在也不报错）
+      - name: 整理固件产物
         run: |
           mkdir -p firmware-output
           mv ib-root/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*-sysupgrade.img.gz firmware-output/ || true
           mv ib-root/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*-factory.img.gz firmware-output/ || true
-          echo "=== 生成固件列表 ==="
           ls -lh firmware-output
 
-      - name: 上传固件至Action制品
+      - name: 上传固件制品
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt-HINLINK-H28K-25.12.4-Firmware
+          name: OpenWrt-H28K-25.12.1-Firmware
           path: firmware-output
           retention-days: 30
