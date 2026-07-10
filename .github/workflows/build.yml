@@ -56,7 +56,6 @@ jobs:
             PROFILE=${{ env.PROFILE }} \
             PACKAGES="\
               luci luci-i18n-base-zh-cn luci-theme-argon luci-app-argon-config \
-              luci-app-passwall2 luci-i18n-passwall2-zh-cn \
               nano curl openssh-sftp-server shadow sudo \
               -ppp -ppp-mod-pppoe -odhcp6c -kmod-ipv6 -ip6tables \
             " \
