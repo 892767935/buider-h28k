@@ -45,19 +45,7 @@ jobs:
           mkdir -p packages
           cp -r $GITHUB_WORKSPACE/custom-packages/* packages/ || true
 
-      # 方案一修复后的步骤
-      - name: 刷新软件源索引并检索插件
-        run: |
-          cd ib-root
-          ls -la
-          OPKG_BIN=./staging_dir/host/bin/opkg
-          $OPKG_BIN update -f ./repositories.conf
-          echo "=== 查找luci-app-openclash ==="
-          $OPKG_BIN find luci-app-openclash -f ./repositories.conf
-          echo "=== 查找luci-app-lucky ==="
-          $OPKG_BIN find luci-app-lucky -f ./repositories.conf
-        shell: /usr/bin/bash -e {0}
-
+      # 已删除预校验步骤，编译时自动处理源与插件校验
       - name: 编译固件（内置OpenClash+Lucky）
         run: |
           cd ib-root
