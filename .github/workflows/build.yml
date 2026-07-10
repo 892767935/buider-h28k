@@ -1,4 +1,4 @@
-name: Build OpenWrt HINLINK_H28K 25.12.4 Official IB
+name: Build OpenWrt HINLINK_H28K 25.12.4 Official IB With OpenClash&Lucky
 on:
   workflow_dispatch:
   push:
@@ -11,7 +11,7 @@ env:
   SUBTARGET: armv8
   PROFILE: hinlink_h28k
   ROOTFS_SIZE: 800
-  EXTRA_IMG_NAME: H28K-25.12.4-Official-Custom
+  EXTRA_IMG_NAME: H28K-25.12.4-Official-OpenClash-Lucky
   IB_URL: https://archive.openwrt.org/releases/25.12.4/targets/rockchip/armv8/openwrt-imagebuilder-25.12.4-rockchip-armv8.Linux-x86_64.tar.zst
 
 jobs:
@@ -46,18 +46,23 @@ jobs:
           cd ib-root
           make info
 
-      - name: 导入自定义配置 & 替换官方软件源
+      - name: 导入自定义配置 & 替换软件源并刷新索引
         run: |
           cd ib-root
-          # 覆盖仓库内官方源配置
+          # 覆盖仓库内源配置（含第三方ImmortalWrt插件源）
           cp $GITHUB_WORKSPACE/repositories.conf ./repositories.conf
           # 拷贝自定义uci开机配置目录
           cp -r $GITHUB_WORKSPACE/files ./ || true
           # 本地自定义ipk插件目录
           mkdir -p packages
           cp -r $GITHUB_WORKSPACE/custom-packages/* packages/ || true
+          # 关键：刷新opkg源索引，才能识别OpenClash/Lucky
+          opkg update
+          # 调试检索插件是否存在
+          opkg find luci-app-openclash
+          opkg find luci-app-lucky
 
-      - name: ImageBuilder 编译 hinlink_h28k 固件（仅官方原生包，无第三方插件）
+      - name: ImageBuilder 编译 hinlink_h28k 固件（官方+OpenClash+Lucky）
         run: |
           cd ib-root
           make image \
@@ -65,6 +70,7 @@ jobs:
             PACKAGES="\
               luci luci-i18n-base-zh-cn \
               nano curl openssh-sftp-server shadow sudo \
+              luci-app-openclash luci-app-lucky \
               -ppp -ppp-mod-pppoe -odhcp6c -kmod-ipv6 -ip6tables \
             " \
             FILES="./files" \
