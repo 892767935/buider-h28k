@@ -55,7 +55,7 @@ jobs:
           make image \
             PROFILE=${{ env.PROFILE }} \
             PACKAGES="\
-              luci luci-i18n-base-zh-cn luci-theme-argon luci-app-argon-config \
+              luci luci-i18n-base-zh-cn \
               nano curl openssh-sftp-server shadow sudo \
               -ppp -ppp-mod-pppoe -odhcp6c -kmod-ipv6 -ip6tables \
             " \
