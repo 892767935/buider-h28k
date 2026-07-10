@@ -26,9 +26,9 @@ jobs:
           sudo apt update
           sudo apt install -y build-essential libncurses-dev zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python3 python3-distutils zstd
 
-      - name: 下载官方 ImageBuilder 压缩包（修复重定向参数）
+      - name: 下载官方 ImageBuilder 压缩包（兼容低版本wget参数-L）
         run: |
-          wget --tries=5 --timeout=60 --follow-redirects ${{ env.IB_URL }} -O ib.tar.zst
+          wget --tries=5 --timeout=60 -L ${{ env.IB_URL }} -O ib.tar.zst
           echo "=== 校验下载文件格式 ==="
           if ! file ib.tar.zst | grep -q "Zstandard compressed data"; then
             echo "❌ 下载内容不是zstd压缩包，打印文件内容排查："
