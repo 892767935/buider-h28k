@@ -46,14 +46,11 @@ jobs:
           cd ib-root
           make info
 
-      - name: 导入自定义配置 & 替换软件源（移除opkg相关命令）
+      - name: 导入自定义配置 & 替换软件源（已移除所有opkg命令）
         run: |
           cd ib-root
-          # 覆盖仓库内源配置（含第三方ImmortalWrt插件源）
           cp $GITHUB_WORKSPACE/repositories.conf ./repositories.conf
-          # 拷贝自定义uci开机配置目录，无目录自动跳过
           cp -r $GITHUB_WORKSPACE/files ./ || true
-          # 本地自定义ipk插件目录，不存在则跳过
           mkdir -p packages
           cp -r $GITHUB_WORKSPACE/custom-packages/* packages/ || true
 
@@ -70,15 +67,13 @@ jobs:
             " \
             FILES="./files" \
             DISABLED_SERVICES="dnsmasq odhcpd" \
-            ROOTFS_PARTSIZE=${{ env.ROOTFS_SIZE }} \
+            ROOTFS_SIZE=${{ env.ROOTFS_SIZE }} \
             EXTRA_IMAGE_NAME=${{ env.EXTRA_IMG_NAME }}
 
       - name: 整理固件产物（适配rockchip img.gz格式，不存在也不报错）
         run: |
           mkdir -p firmware-output
-          # 系统升级镜像
           mv ib-root/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*-sysupgrade.img.gz firmware-output/ || true
-          # 原厂直刷镜像
           mv ib-root/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*-factory.img.gz firmware-output/ || true
           echo "=== 生成固件列表 ==="
           ls -lh firmware-output
