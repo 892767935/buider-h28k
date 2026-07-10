@@ -1,106 +1,75 @@
-name: Build OpenWrt HiLink H28K ImageBuilder
-# 触发条件：推送main分支、手动触发
+name: Build H28K 25.12.4 ImageBuilder
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+  push:
+    branches: main
 
 env:
+  RELEASE_VER: 25.12.4
   TARGET: rockchip
-  SUBTARGET: rk3528
+  SUBTARGET: armv8
   PROFILE: hilink-h28k
-  OPENWRT_SRC: https://github.com/coolsnowwolf/lede.git
-  SRC_BRANCH: openwrt-25.12
   ROOTFS_SIZE: 800
-  EXTRA_IMG_NAME: H28K-PassWall2-Argon
+  EXTRA_NAME: H28K-25.12.4-Custom
+  # 清华镜像IB下载地址
+  IB_URL: https://mirrors.tuna.tsinghua.edu.cn/openwrt/releases/25.12.4/targets/rockchip/armv8/openwrt-imagebuilder-rockchip-armv8.Linux-x86_64.tar.xz
 
 jobs:
-  build:
+  build-firmware:
     runs-on: ubuntu-22.04
     steps:
-      - name: 拉取仓库代码
+      - name: 拉取仓库自定义文件
         uses: actions/checkout@v4
 
-      - name: 安装编译依赖（Ubuntu）
+      - name: 安装 ImageBuilder 依赖
         run: |
           sudo apt update
-          sudo apt install -y build-essential libncurses-dev zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python3 python3-distutils qemu-utils
+          sudo apt install -y build-essential libncurses-dev zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python3 python3-distutils
 
-      - name: 拉取 Lean Lede 源码
+      - name: 下载官方 25.12.4 ImageBuilder
         run: |
-          git clone $OPENWRT_SRC openwrt
-          cd openwrt
-          git checkout $SRC_BRANCH
-          # 更新 feeds 插件源
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-      - name: 生成基础配置、开启编译ImageBuilder
-        run: |
-          cd openwrt
-          # 载入目标平台 rockchip rk3528
-          echo "CONFIG_TARGET_${TARGET}=y" >> .config
-          echo "CONFIG_TARGET_${TARGET}_${SUBTARGET}=y" >> .config
-          echo "CONFIG_TARGET_${TARGET}_${SUBTARGET}_DEVICE_${PROFILE^^}=y" >> .config
-          # 开启构建 ImageBuilder
-          echo "CONFIG_IB=y" >> .config
-          # 根分区大小
-          echo "CONFIG_TARGET_ROOTFS_PARTSIZE=${{ env.ROOTFS_SIZE }}" >> .config
-          # 预编译全套插件（可选，IB离线打包）
-          # echo "CONFIG_ALL_PACKAGES=y" >> .config
-          make defconfig
-
-      - name: 完整编译源码（生成ImageBuilder压缩包）
-        run: |
-          cd openwrt
-          make -j$(nproc)
-
-      - name: 提取 ImageBuilder 工具包
-        run: |
-          cd openwrt/bin/targets/${TARGET}/${SUBTARGET}/
-          IB_TAR=$(ls openwrt-imagebuilder-*.tar.xz)
-          mkdir -p ~/ib
-          tar -Jxf $IB_TAR -C ~/ib
-          cd ~/ib
-          mv openwrt-imagebuilder-* ib-root
+          wget ${{ env.IB_URL }} -O ib.tar.xz
+          mkdir ib-root
+          tar -Jxf ib.tar.xz -C ib-root --strip-components=1
           cd ib-root
-          # 替换自定义软件源
-          cp $GITHUB_WORKSPACE/repositories.conf repositories.conf
+          ls -la
+
+      - name: 替换软件源、导入自定义文件
+        run: |
+          cd ib-root
+          # 覆盖仓库内的 repositories.conf
+          cp $GITHUB_WORKSPACE/repositories.conf ./repositories.conf
+          # 拷贝自定义配置目录 files
+          cp -r $GITHUB_WORKSPACE/files ./ || true
           # 拷贝本地自定义ipk包
           mkdir -p packages
           cp -r $GITHUB_WORKSPACE/custom-packages/* packages/ || true
-          # 拷贝自定义files配置目录
-          cp -r $GITHUB_WORKSPACE/files ./ || true
 
-      - name: 使用 ImageBuilder 打包自定义固件
+      - name: 打包自定义固件 ImageBuilder
         run: |
-          cd ~/ib/ib-root
-          # 构建固件命令
+          cd ib-root
           make image \
             PROFILE=${{ env.PROFILE }} \
             PACKAGES="\
               luci luci-i18n-base-zh-cn luci-theme-argon luci-app-argon-config \
               luci-app-passwall2 luci-i18n-passwall2-zh-cn \
-              luci-app-homeproxy luci-app-adguardhome luci-app-banad \
-              nano curl wget openssh-sftp-server shadow sudo \
+              nano curl openssh-sftp-server shadow sudo \
               -ppp -ppp-mod-pppoe -odhcp6c -kmod-ipv6 -ip6tables \
             " \
             FILES="./files" \
             DISABLED_SERVICES="dnsmasq odhcpd" \
             ROOTFS_PARTSIZE=${{ env.ROOTFS_SIZE }} \
-            EXTRA_IMAGE_NAME=${{ env.EXTRA_IMG_NAME }}
+            EXTRA_IMAGE_NAME=${{ env.EXTRA_NAME }}
 
-      - name: 整理固件产物
+      - name: 整理固件
         run: |
-          mkdir -p ./firmware-output
-          mv ~/ib/ib-root/bin/targets/${TARGET}/${SUBTARGET}/*-sysupgrade.bin ./firmware-output/
-          mv ~/ib/ib-root/bin/targets/${TARGET}/${SUBTARGET}/*-factory.bin ./firmware-output/
-          ls ./firmware-output
+          mkdir output
+          mv ib-root/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*.bin output/
+          ls output
 
-      - name: 上传固件到 Artifacts
+      - name: 上传固件制品
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt-H28K-Firmware
-          path: ./firmware-output
+          name: OpenWrt-H28K-25.12.4-Firmware
+          path: output
           retention-days: 30
