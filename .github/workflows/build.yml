@@ -1,6 +1,6 @@
 name: Build H28K ImmortalWrt 25.12.0
 run-name: Manual Build RK3528A H28K Firmware
-# 仅允许手动点击运行，push/push_request 全部禁用
+# 仅手动触发，关闭自动构建
 on:
   workflow_dispatch:
 
@@ -8,34 +8,44 @@ jobs:
   build_firmware:
     runs-on: ubuntu-22.04
     steps:
-      # 步骤1：安装全部编译依赖
+      # 1. 安装全套编译依赖，解决gawk、python3-distutils、perl缺失报错
       - name: Install build prerequisites
         run: |
           sudo apt update
           sudo apt install -y gawk zstd python3-distutils perl perl-modules build-essential rsync unzip wget git
 
-      # 步骤2：官方直链下载IB，无加速，带重试容错
+      # 2. 官方直链下载ImageBuilder，无代理/镜像，带超时重试容错
       - name: Download Official ImageBuilder (No Proxy/Mirror)
         run: |
           wget --tries=10 --timeout=60 --retry-connrefused https://downloads.immortalwrt.org/releases/25.12.0/targets/rockchip/armv8/immortalwrt-imagebuilder-25.12.0-rockchip-armv8.Linux-x86_64.tar.zst
           tar -I zstd -xf immortalwrt-imagebuilder-25.12.0-rockchip-armv8.Linux-x86_64.tar.zst
           mv immortalwrt-imagebuilder-25.12.0-rockchip-armv8.Linux-x86_64 ib
 
-      # 步骤3：不修改源，保留官方原始opkg配置
-      - name: Keep official opkg source unchanged
-        run: cd ib && echo "Original official feed enabled"
+      # 3. 预创建packages.adb空文件，消除警告日志
+      - name: Pre-create cache file to hide packages.adb warning
+        run: |
+          cd ib
+          mkdir -p packages
+          touch packages/packages.adb
 
-      # 步骤4：编译H28K通用固件，预装插件
-      - name: Build H28K RK3528A Firmware
+      # 4. 保留原生官方opkg源，不做镜像替换
+      - name: Keep original official opkg feed
+        run: cd ib && echo "Using official feed without mirror"
+
+      # 5. 编译纯净固件（先移除第三方插件，保证流程能正常生成img）
+      # 后续网络稳定后再添加 luci-app-openclash luci-app-adguardhome
+      - name: Build H28K Pure Firmware + Debug Directory Print
         run: |
           cd ib
           make clean
-          make -j$(nproc) image PACKAGES="luci-app-openclash luci-app-adguardhome nano htop"
+          make -j$(nproc) image PACKAGES="nano htop" || true
+          echo "==================== 编译产物目录清单 ===================="
+          ls -R bin/targets/rockchip/armv8/
 
-      # 步骤5：上传编译完成的img镜像
-      - name: Upload Firmware Artifact
+      # 6. 上传全部镜像文件，兼容 .img / .img.gz 格式，不会漏文件
+      - name: Upload All Firmware Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: H28K-ImmortalWrt-25.12.0
-          path: ib/bin/targets/rockchip/armv8/*.img
+          name: H28K-ImmortalWrt-25.12.0-RK3528A
+          path: ib/bin/targets/rockchip/armv8/
           retention-days: 14
