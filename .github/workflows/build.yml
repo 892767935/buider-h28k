@@ -1,8 +1,9 @@
-name: Build H28K 25.12.4 ImageBuilder
+name: Build OpenWrt H28K 25.12.4 Official ImageBuilder
 on:
   workflow_dispatch:
   push:
-   # branches: main
+    branches:
+      - main
 
 env:
   RELEASE_VER: 25.12.4
@@ -10,42 +11,51 @@ env:
   SUBTARGET: armv8
   PROFILE: hilink-h28k
   ROOTFS_SIZE: 800
-  EXTRA_NAME: H28K-25.12.4-Custom
-  # 清华镜像IB下载地址
+  EXTRA_IMG_NAME: H28K-25.12.4-Official-Custom
+  # 你提供的官方正确zst压缩包地址
   IB_URL: https://archive.openwrt.org/releases/25.12.4/targets/rockchip/armv8/openwrt-imagebuilder-25.12.4-rockchip-armv8.Linux-x86_64.tar.zst
 
 jobs:
   build-firmware:
     runs-on: ubuntu-22.04
     steps:
-      - name: 拉取仓库自定义文件
+      - name: 拉取仓库自定义配置文件
         uses: actions/checkout@v4
 
-      - name: 安装 ImageBuilder 依赖
+      - name: 安装 ImageBuilder 全部依赖（含zstd解压工具）
         run: |
           sudo apt update
-          sudo apt install -y build-essential libncurses-dev zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python3 python3-distutils
+          sudo apt install -y build-essential libncurses-dev zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python3 python3-distutils zstd
 
-      - name: 下载官方 25.12.4 ImageBuilder
+      - name: 下载官方 ImageBuilder 压缩包（跟随跳转+重试机制）
         run: |
-          wget ${{ env.IB_URL }} -O ib.tar.xz
+          wget --tries=5 --timeout=60 --location ${{ env.IB_URL }} -O ib.tar.zst
+          # 校验文件是否为合法Zstandard压缩包
+          echo "=== 校验下载文件格式 ==="
+          if ! file ib.tar.zst | grep -q "Zstandard compressed data"; then
+            echo "❌ 下载内容不是zstd压缩包，打印文件内容排查："
+            cat ib.tar.zst
+            exit 1
+          fi
+          echo "✅ 文件校验通过，开始解压"
           mkdir ib-root
-          tar -Jxf ib.tar.xz -C ib-root --strip-components=1
+          # zst格式专用解压参数 -I zstd
+          tar -I zstd -xf ib.tar.zst -C ib-root --strip-components=1
           cd ib-root
           ls -la
 
-      - name: 替换软件源、导入自定义文件
+      - name: 替换官方软件源、导入自定义文件
         run: |
           cd ib-root
-          # 覆盖仓库内的 repositories.conf
+          # 覆盖仓库内官方源配置 repositories.conf
           cp $GITHUB_WORKSPACE/repositories.conf ./repositories.conf
-          # 拷贝自定义配置目录 files
+          # 拷贝自定义uci/网络配置目录 files
           cp -r $GITHUB_WORKSPACE/files ./ || true
-          # 拷贝本地自定义ipk包
+          # 本地自定义ipk插件目录
           mkdir -p packages
           cp -r $GITHUB_WORKSPACE/custom-packages/* packages/ || true
 
-      - name: 打包自定义固件 ImageBuilder
+      - name: ImageBuilder 编译自定义固件
         run: |
           cd ib-root
           make image \
@@ -59,17 +69,18 @@ jobs:
             FILES="./files" \
             DISABLED_SERVICES="dnsmasq odhcpd" \
             ROOTFS_PARTSIZE=${{ env.ROOTFS_SIZE }} \
-            EXTRA_IMAGE_NAME=${{ env.EXTRA_NAME }}
+            EXTRA_IMAGE_NAME=${{ env.EXTRA_IMG_NAME }}
 
-      - name: 整理固件
+      - name: 整理固件输出产物
         run: |
-          mkdir output
-          mv ib-root/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*.bin output/
-          ls output
+          mkdir firmware-output
+          mv ib-root/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*.bin firmware-output/
+          echo "=== 生成固件列表 ==="
+          ls -lh firmware-output
 
-      - name: 上传固件制品
+      - name: 上传固件至Action制品
         uses: actions/upload-artifact@v4
         with:
           name: OpenWrt-H28K-25.12.4-Firmware
-          path: output
+          path: firmware-output
           retention-days: 30
