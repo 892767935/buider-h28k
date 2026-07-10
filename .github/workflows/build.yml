@@ -1,47 +1,41 @@
 name: Build H28K ImmortalWrt 25.12.0
-run-name: Compile RK3528A Rockchip ARMv8 Firmware
-# 触发方式：手动运行 / 推送代码到main分支
+run-name: Manual Build RK3528A H28K Firmware
+# 仅允许手动点击运行，push/push_request 全部禁用
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 jobs:
   build_firmware:
     runs-on: ubuntu-22.04
     steps:
-      # 步骤1：安装全套编译依赖，解决gawk、python3-distutils、perl缺失报错
+      # 步骤1：安装全部编译依赖
       - name: Install build prerequisites
         run: |
           sudo apt update
           sudo apt install -y gawk zstd python3-distutils perl perl-modules build-essential rsync unzip wget git
 
-      # 步骤2：中科大镜像下载正确版本ImageBuilder
-      - name: Download ImmortalWrt ImageBuilder
+      # 步骤2：官方直链下载IB，无加速，带重试容错
+      - name: Download Official ImageBuilder (No Proxy/Mirror)
         run: |
-          wget https://mirrors.ustc.edu.cn/immortalwrt/releases/25.12.0/targets/rockchip/armv8/immortalwrt-imagebuilder-25.12.0-rockchip-armv8.Linux-x86_64.tar.zst
+          wget --tries=10 --timeout=60 --retry-connrefused https://downloads.immortalwrt.org/releases/25.12.0/targets/rockchip/armv8/immortalwrt-imagebuilder-25.12.0-rockchip-armv8.Linux-x86_64.tar.zst
           tar -I zstd -xf immortalwrt-imagebuilder-25.12.0-rockchip-armv8.Linux-x86_64.tar.zst
           mv immortalwrt-imagebuilder-25.12.0-rockchip-armv8.Linux-x86_64 ib
 
-      # 步骤3：替换IB内置opkg源为国内镜像，防止拉插件超时/404
-      - name: Switch opkg feed to USTC mirror
-        run: |
-          cd ib
-          sed -i 's|https://opkg.immortalwrt.org|https://mirrors.ustc.edu.cn/immortalwrt|g' repositories.conf
-          sed -i 's|releases/25.12|releases/25.12.0|g' repositories.conf
+      # 步骤3：不修改源，保留官方原始opkg配置
+      - name: Keep official opkg source unchanged
+        run: cd ib && echo "Original official feed enabled"
 
-      # 步骤4：编译固件，预装OpenClash + AdGuardHome
-      - name: Build firmware for H28K RK3528A
+      # 步骤4：编译H28K通用固件，预装插件
+      - name: Build H28K RK3528A Firmware
         run: |
           cd ib
           make clean
-          # rockchip-armv8无单独rk3528a profile，无需PROFILE参数
           make -j$(nproc) image PACKAGES="luci-app-openclash luci-app-adguardhome nano htop"
 
-      # 步骤5：上传编译完成的img固件到Artifacts
-      - name: Upload firmware artifact
+      # 步骤5：上传编译完成的img镜像
+      - name: Upload Firmware Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: H28K-ImmortalWrt-25.12.0-RK3528A
+          name: H28K-ImmortalWrt-25.12.0
           path: ib/bin/targets/rockchip/armv8/*.img
           retention-days: 14
