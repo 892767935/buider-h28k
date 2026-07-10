@@ -1,4 +1,4 @@
-name: Build OpenWrt H28K 25.12.4 Official ImageBuilder
+name: Build OpenWrt HINLINK_H28K 25.12.4 Official IB
 on:
   workflow_dispatch:
   push:
@@ -21,12 +21,12 @@ jobs:
       - name: 拉取仓库自定义配置文件
         uses: actions/checkout@v4
 
-      - name: 安装 ImageBuilder 全部依赖（含zstd解压工具）
+      - name: 安装 ImageBuilder 全套依赖（含zstd解压工具）
         run: |
           sudo apt update
           sudo apt install -y build-essential libncurses-dev zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python3 python3-distutils zstd
 
-      - name: 下载官方 ImageBuilder 压缩包（兼容低版本wget参数-L）
+      - name: 下载官方 ImageBuilder 压缩包（兼容低版本wget -L跟随重定向）
         run: |
           wget --tries=5 --timeout=60 -L ${{ env.IB_URL }} -O ib.tar.zst
           echo "=== 校验下载文件格式 ==="
@@ -41,15 +41,23 @@ jobs:
           cd ib-root
           ls -la
 
-      - name: 替换官方软件源、导入自定义文件
+      - name: 查看IB支持的全部设备Profile（校验hinlink_h28k存在）
         run: |
           cd ib-root
+          make info
+
+      - name: 导入自定义配置 & 替换官方软件源
+        run: |
+          cd ib-root
+          # 覆盖仓库内官方源配置
           cp $GITHUB_WORKSPACE/repositories.conf ./repositories.conf
+          # 拷贝自定义uci开机配置目录
           cp -r $GITHUB_WORKSPACE/files ./ || true
+          # 本地自定义ipk插件目录
           mkdir -p packages
           cp -r $GITHUB_WORKSPACE/custom-packages/* packages/ || true
 
-      - name: ImageBuilder 编译自定义固件
+      - name: ImageBuilder 编译 hinlink_h28k 固件（仅官方原生包，无第三方插件）
         run: |
           cd ib-root
           make image \
@@ -64,16 +72,19 @@ jobs:
             ROOTFS_PARTSIZE=${{ env.ROOTFS_SIZE }} \
             EXTRA_IMAGE_NAME=${{ env.EXTRA_IMG_NAME }}
 
-      - name: 整理固件输出产物
+      - name: 整理固件产物（适配rockchip img.gz格式，不存在也不报错）
         run: |
-          mkdir firmware-output
-          mv ib-root/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*.bin firmware-output/
+          mkdir -p firmware-output
+          # 系统升级镜像
+          mv ib-root/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*-sysupgrade.img.gz firmware-output/ || true
+          # 原厂直刷镜像
+          mv ib-root/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*-factory.img.gz firmware-output/ || true
           echo "=== 生成固件列表 ==="
           ls -lh firmware-output
 
       - name: 上传固件至Action制品
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt-H28K-25.12.4-Firmware
+          name: OpenWrt-HINLINK-H28K-25.12.4-Firmware
           path: firmware-output
           retention-days: 30
