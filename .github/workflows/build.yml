@@ -45,18 +45,18 @@ jobs:
           mkdir -p packages
           cp -r $GITHUB_WORKSPACE/custom-packages/* packages/ || true
 
-      # 【修复】使用IB标准make opkg调用，不再直接调用./bin/opkg
+      # 方案一修复后的步骤
       - name: 刷新软件源索引并检索插件
         run: |
           cd ib-root
           ls -la
-          # 更新软件源索引
-          make OPKG_ARGS="update" opkg
-          # 检索插件是否存在
+          OPKG_BIN=./staging_dir/host/bin/opkg
+          $OPKG_BIN update -f ./repositories.conf
           echo "=== 查找luci-app-openclash ==="
-          make OPKG_ARGS="find luci-app-openclash" opkg
+          $OPKG_BIN find luci-app-openclash -f ./repositories.conf
           echo "=== 查找luci-app-lucky ==="
-          make OPKG_ARGS="find luci-app-lucky" opkg
+          $OPKG_BIN find luci-app-lucky -f ./repositories.conf
+        shell: /usr/bin/bash -e {0}
 
       - name: 编译固件（内置OpenClash+Lucky）
         run: |
