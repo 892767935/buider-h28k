@@ -2,7 +2,7 @@ name: Build H28K 25.12.4 ImageBuilder
 on:
   workflow_dispatch:
   push:
-    branches: main
+   # branches: main
 
 env:
   RELEASE_VER: 25.12.4
