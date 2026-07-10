@@ -12,7 +12,7 @@ env:
   ROOTFS_SIZE: 800
   EXTRA_NAME: H28K-25.12.4-Custom
   # 清华镜像IB下载地址
-  IB_URL: https://archive.openwrt.org/releases/25.12.4/targets/rockchip/armv8/openwrt-imagebuilder-rockchip-armv8.Linux-x86_64.tar.xz
+  IB_URL: https://archive.openwrt.org/releases/25.12.4/targets/rockchip/armv8/openwrt-imagebuilder-25.12.4-rockchip-armv8.Linux-x86_64.tar.zst
 
 jobs:
   build-firmware:
