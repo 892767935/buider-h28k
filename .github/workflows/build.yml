@@ -12,7 +12,7 @@ env:
   PROFILE: hinlink_h28k
   ROOTFS_SIZE: 800
   EXTRA_IMG_NAME: H28K-25.12.4-Official-OpenClash-Lucky
-  IB_URL: https://archive.openwrt.org/releases/25.12.4/targets/rockchip/armv8/openwrt-imagebuilder-25.12.4-rockchip-armv8.Linux-x86_64.tar.zst
+  IB_URL: https://archive.openwrt.org/releases/25.12.1/targets/rockchip/armv8/openwrt-imagebuilder-25.12.1-rockchip-armv8.Linux-x86_64.tar.zst
 
 jobs:
   build-firmware:
