@@ -1,0 +1,33 @@
+- name: Install Build Deps
+  run: |
+    sudo apt update
+    sudo apt install -y gawk zstd python3-distutils perl perl-modules build-essential rsync unzip wget git
+
+- name: Download ImmortalWrt 25.12.0 ImageBuilder（中科大镜像）
+  run: |
+    wget https://mirrors.ustc.edu.cn/immortalwrt/releases/25.12.0/targets/rockchip/armv8/immortalwrt-imagebuilder-25.12.0-rockchip-armv8.Linux-x86_64.tar.zst
+    tar -I zstd -xf immortalwrt-imagebuilder-25.12.0-rockchip-armv8.Linux-x86_64.tar.zst
+    mv immortalwrt-imagebuilder-25.12.0-rockchip-armv8.Linux-x86_64 ib
+    cd ib
+
+# 替换IB内部opkg源为中科大镜像，避免编译插件时境外连接中断
+- name: 替换软件源为国内镜像
+  run: |
+    cd ib
+    sed -i 's|https://opkg.immortalwrt.org|https://mirrors.ustc.edu.cn/immortalwrt|g' repositories.conf
+    sed -i 's|releases/25.12|releases/25.12.0|g' repositories.conf
+
+# 编译适配H28K(RK3528A)固件，内置OpenClash+AdGuardHome
+- name: Build H28K Firmware
+  run: |
+    cd ib
+    make clean
+    make -j$(nproc) image PACKAGES="luci-app-openclash luci-app-adguardhome"
+
+# 上传固件成品
+- name: Upload Firmware Artifact
+  uses: actions/upload-artifact@v4
+  with:
+    name: H28K-ImmortalWrt-25.12.0
+    path: ib/bin/targets/rockchip/armv8/*.img
+    retention-days: 14
