@@ -1,0 +1,13 @@
+#!/bin/sh
+# 修改LAN IP
+uci set network.lan.ipaddr='192.168.1.10'
+uci commit network
+
+# 设置root密码
+echo "root:18110512616" | chpasswd
+
+# Argon主题默认浅色
+uci set argon.main_theme='light'
+uci commit argon
+
+exit 0
