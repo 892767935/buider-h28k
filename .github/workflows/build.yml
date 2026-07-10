@@ -1,51 +1,106 @@
-name: Build H28K ImmortalWrt 25.12.0
-run-name: Manual Build RK3528A H28K Firmware
-# 仅手动触发，关闭自动构建
+name: Build OpenWrt HiLink H28K ImageBuilder
+# 触发条件：推送main分支、手动触发
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
+env:
+  TARGET: rockchip
+  SUBTARGET: rk3528
+  PROFILE: hilink-h28k
+  OPENWRT_SRC: https://github.com/coolsnowwolf/lede.git
+  SRC_BRANCH: openwrt-25.12
+  ROOTFS_SIZE: 800
+  EXTRA_IMG_NAME: H28K-PassWall2-Argon
+
 jobs:
-  build_firmware:
+  build:
     runs-on: ubuntu-22.04
     steps:
-      # 1. 安装全套编译依赖，解决gawk、python3-distutils、perl缺失报错
-      - name: Install build prerequisites
+      - name: 拉取仓库代码
+        uses: actions/checkout@v4
+
+      - name: 安装编译依赖（Ubuntu）
         run: |
           sudo apt update
-          sudo apt install -y gawk zstd python3-distutils perl perl-modules build-essential rsync unzip wget git
+          sudo apt install -y build-essential libncurses-dev zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python3 python3-distutils qemu-utils
 
-      # 2. 官方直链下载ImageBuilder，无代理/镜像，带超时重试容错
-      - name: Download Official ImageBuilder (No Proxy/Mirror)
+      - name: 拉取 Lean Lede 源码
         run: |
-          wget --tries=10 --timeout=60 --retry-connrefused https://downloads.immortalwrt.org/releases/25.12.0/targets/rockchip/armv8/immortalwrt-imagebuilder-25.12.0-rockchip-armv8.Linux-x86_64.tar.zst
-          tar -I zstd -xf immortalwrt-imagebuilder-25.12.0-rockchip-armv8.Linux-x86_64.tar.zst
-          mv immortalwrt-imagebuilder-25.12.0-rockchip-armv8.Linux-x86_64 ib
+          git clone $OPENWRT_SRC openwrt
+          cd openwrt
+          git checkout $SRC_BRANCH
+          # 更新 feeds 插件源
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-      # 3. 预创建packages.adb空文件，消除警告日志
-      - name: Pre-create cache file to hide packages.adb warning
+      - name: 生成基础配置、开启编译ImageBuilder
         run: |
-          cd ib
+          cd openwrt
+          # 载入目标平台 rockchip rk3528
+          echo "CONFIG_TARGET_${TARGET}=y" >> .config
+          echo "CONFIG_TARGET_${TARGET}_${SUBTARGET}=y" >> .config
+          echo "CONFIG_TARGET_${TARGET}_${SUBTARGET}_DEVICE_${PROFILE^^}=y" >> .config
+          # 开启构建 ImageBuilder
+          echo "CONFIG_IB=y" >> .config
+          # 根分区大小
+          echo "CONFIG_TARGET_ROOTFS_PARTSIZE=${{ env.ROOTFS_SIZE }}" >> .config
+          # 预编译全套插件（可选，IB离线打包）
+          # echo "CONFIG_ALL_PACKAGES=y" >> .config
+          make defconfig
+
+      - name: 完整编译源码（生成ImageBuilder压缩包）
+        run: |
+          cd openwrt
+          make -j$(nproc)
+
+      - name: 提取 ImageBuilder 工具包
+        run: |
+          cd openwrt/bin/targets/${TARGET}/${SUBTARGET}/
+          IB_TAR=$(ls openwrt-imagebuilder-*.tar.xz)
+          mkdir -p ~/ib
+          tar -Jxf $IB_TAR -C ~/ib
+          cd ~/ib
+          mv openwrt-imagebuilder-* ib-root
+          cd ib-root
+          # 替换自定义软件源
+          cp $GITHUB_WORKSPACE/repositories.conf repositories.conf
+          # 拷贝本地自定义ipk包
           mkdir -p packages
-          touch packages/packages.adb
+          cp -r $GITHUB_WORKSPACE/custom-packages/* packages/ || true
+          # 拷贝自定义files配置目录
+          cp -r $GITHUB_WORKSPACE/files ./ || true
 
-      # 4. 保留原生官方opkg源，不做镜像替换
-      - name: Keep original official opkg feed
-        run: cd ib && echo "Using official feed without mirror"
-
-      # 5. 编译纯净固件（先移除第三方插件，保证流程能正常生成img）
-      # 后续网络稳定后再添加 luci-app-openclash luci-app-adguardhome
-      - name: Build H28K Pure Firmware + Debug Directory Print
+      - name: 使用 ImageBuilder 打包自定义固件
         run: |
-          cd ib
-          make clean
-          make -j$(nproc) image PACKAGES="nano htop" || true
-          echo "==================== 编译产物目录清单 ===================="
-          ls -R bin/targets/rockchip/armv8/
+          cd ~/ib/ib-root
+          # 构建固件命令
+          make image \
+            PROFILE=${{ env.PROFILE }} \
+            PACKAGES="\
+              luci luci-i18n-base-zh-cn luci-theme-argon luci-app-argon-config \
+              luci-app-passwall2 luci-i18n-passwall2-zh-cn \
+              luci-app-homeproxy luci-app-adguardhome luci-app-banad \
+              nano curl wget openssh-sftp-server shadow sudo \
+              -ppp -ppp-mod-pppoe -odhcp6c -kmod-ipv6 -ip6tables \
+            " \
+            FILES="./files" \
+            DISABLED_SERVICES="dnsmasq odhcpd" \
+            ROOTFS_PARTSIZE=${{ env.ROOTFS_SIZE }} \
+            EXTRA_IMAGE_NAME=${{ env.EXTRA_IMG_NAME }}
 
-      # 6. 上传全部镜像文件，兼容 .img / .img.gz 格式，不会漏文件
-      - name: Upload All Firmware Artifacts
+      - name: 整理固件产物
+        run: |
+          mkdir -p ./firmware-output
+          mv ~/ib/ib-root/bin/targets/${TARGET}/${SUBTARGET}/*-sysupgrade.bin ./firmware-output/
+          mv ~/ib/ib-root/bin/targets/${TARGET}/${SUBTARGET}/*-factory.bin ./firmware-output/
+          ls ./firmware-output
+
+      - name: 上传固件到 Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: H28K-ImmortalWrt-25.12.0-RK3528A
-          path: ib/bin/targets/rockchip/armv8/
-          retention-days: 14
+          name: OpenWrt-H28K-Firmware
+          path: ./firmware-output
+          retention-days: 30
