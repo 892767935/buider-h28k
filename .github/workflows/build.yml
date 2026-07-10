@@ -49,11 +49,13 @@ jobs:
       - name: 刷新软件源索引并检索插件
         run: |
           cd ib-root
-          make opkg-update
+            # 更新软件源索引
+          ./bin/opkg update
+          # 检索插件是否存在
           echo "=== 查找luci-app-openclash ==="
-          make OPKG_ARGS="find luci-app-openclash" opkg
+          ./bin/opkg find luci-app-openclash
           echo "=== 查找luci-app-lucky ==="
-          make OPKG_ARGS="find luci-app-lucky" opkg
+          ./bin/opkg find luci-app-lucky
 
       - name: 编译固件（内置OpenClash+Lucky）
         run: |
